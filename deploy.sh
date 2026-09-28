@@ -13,11 +13,20 @@
 # ---------------------------------------------------------------------------
 set -uo pipefail
 
-WORKSPACE="${WORKSPACE:-$HOME/.deploy-workspace}"
+# DEPLOY_WORKSPACE is the documented override and wins; WORKSPACE is kept as an
+# alias. Whatever wins is exported as DEPLOY_WORKSPACE and nothing else, so
+# bin/lib/common.sh stays the single place that decides the real paths. An earlier
+# version pre-exported CACHE_DIR/LOG_DIR here, which silently beat DEPLOY_WORKSPACE
+# inside the tool while the output still claimed to honour it.
+WORKSPACE="${DEPLOY_WORKSPACE:-${WORKSPACE:-$HOME/.deploy-workspace}}"
 REPO_SLUG="${REPO_SLUG:-Tarunsatschel/deploy-tool}"
 REPO_REF="${REPO_REF:-main}"
 
-RED=$'[1;31m'; GRN=$'[1;32m'; BLU=$'[1;34m'; DIM=$'[2m'; OFF=$'[0m'
+if [ -t 1 ]; then
+  RED=$'[1;31m'; GRN=$'[1;32m'; BLU=$'[1;34m'; DIM=$'[2m'; OFF=$'[0m'
+else
+  RED=''; GRN=''; BLU=''; DIM=''; OFF=''
+fi
 die() { printf "
 ${RED}%s${OFF}
 
@@ -55,10 +64,9 @@ Ask Tarun for read access to that repository, then run this command again."
   chmod +x "$TOOL_TMP/bin/deploy.sh" "$TOOL_TMP/setup.sh" 2>/dev/null
   [ -x "$TOOL_TMP/bin/deploy.sh" ] || die "the download is missing bin/deploy.sh"
 
-  export CACHE_DIR="$WORKSPACE/cache"
-  export LOG_DIR="$WORKSPACE/logs"
-  mkdir -p "$CACHE_DIR/devops-files" "$CACHE_DIR/apps/liquidity-alt" \
-           "$CACHE_DIR/apps/satschel" "$LOG_DIR"
+  export DEPLOY_WORKSPACE="$WORKSPACE"
+  mkdir -p "$WORKSPACE/cache/devops-files" "$WORKSPACE/cache/apps/liquidity-alt" \
+           "$WORKSPACE/cache/apps/satschel" "$WORKSPACE/logs"
 }
 
 [ "$#" -gt 0 ] || die "No flags given. For example:
