@@ -65,4 +65,7 @@ Ask Tarun for read access to that repository, then run this command again."
 
 fetch_tool
 printf "${BLU}==> workspace: %s${OFF}\n" "$WORKSPACE"
-EPHEMERAL=1 exec "$TOOL_TMP/setup.sh"
+# Not exec: exec replaces this shell, so the EXIT trap would never run and the
+# temp copy of the tool would be left behind. Call it, keep the status, exit.
+EPHEMERAL=1 "$TOOL_TMP/setup.sh"
+exit $?

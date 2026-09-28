@@ -71,4 +71,9 @@ Run the setup command first if you want a report of what you can reach."
 fetch_tool
 # </dev/null matters: this script arrives on stdin, so without it the tool would
 # inherit the remains of the curl pipe instead of a clean descriptor.
-exec "$TOOL_TMP/bin/deploy.sh" "$@" </dev/null
+# Not exec: exec replaces this shell, so the EXIT trap would never run and the
+# temp copy of the tool would be left behind. Call it, keep the status, exit.
+# </dev/null matters too: this script arrives on stdin, so without it the tool
+# inherits the remains of the curl pipe instead of a clean descriptor.
+"$TOOL_TMP/bin/deploy.sh" "$@" </dev/null
+exit $?
