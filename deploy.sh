@@ -32,6 +32,36 @@ ${RED}%s${OFF}
 
 " "$*" >&2; exit 1; }
 
+# Called only when the tool download fails. "You are logged in" is not enough to
+# explain it: there are three distinct causes and the failure looks identical for
+# all three, so work out which one it actually is instead of guessing.
+diagnose_fetch_failure() {
+  invite_url=$(gh api user/repository_invitations \
+                 --jq ".[] | select(.repository.full_name==\"$REPO_SLUG\") | .html_url" \
+               2>/dev/null | head -1)
+  if [ -n "$invite_url" ]; then
+    printf '%s\n' "You have an invitation to that repository but have not accepted it yet." \
+      "Accept it here, then run this command again:" \
+      "" \
+      "  $invite_url"
+    return
+  fi
+
+  if ! gh auth status 2>&1 | grep -q "'repo'"; then
+    printf '%s\n' "Your GitHub token is missing the 'repo' scope, so it cannot read a private" \
+      "repository. This is not an access problem - you can fix it yourself:" \
+      "" \
+      "  gh auth refresh -s repo" \
+      "" \
+      "then run this command again."
+    return
+  fi
+
+  printf '%s\n' "You are logged in and your token has the right scope, so this is missing access." \
+    "Ask Tarun to add you to that repository, then run this command again."
+}
+
+
 # Fetch the tool into a temp dir and delete it when this command exits, so no
 # copy of it is left behind. The workspace - the expensive part, meaning the
 # chart clones, application clones and run logs - lives in WORKSPACE and stays.
@@ -56,8 +86,7 @@ then run this command again."
   gh api "repos/$REPO_SLUG/tarball/$REPO_REF" > "$TOOL_TMP/t.tgz" 2>/dev/null \
     || die "Could not download $REPO_SLUG.
 
-You are logged in, so this is almost certainly missing access.
-Ask Tarun for read access to that repository, then run this command again."
+$(diagnose_fetch_failure)"
   tar -xzf "$TOOL_TMP/t.tgz" -C "$TOOL_TMP" --strip-components=1 \
     || die "the download was corrupt - run the command again"
   rm -f "$TOOL_TMP/t.tgz"
