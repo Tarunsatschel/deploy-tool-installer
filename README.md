@@ -1,32 +1,52 @@
 # deploy-tool-installer
 
-One-line bootstrap for the deploy tool.
+Two commands. Nothing to clone, and no copy of the tool left on your machine.
+
+**Prerequisites:** `gh` installed and `gh auth login` done. Nothing else.
+
+## 1. Set up (run once)
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Tarunsatschel/deploy-tool-installer/main/setup.sh | bash
 ```
 
-Prerequisites: `gh` installed and `gh auth login` done. Nothing else.
+Checks your tools and logins, reports which clusters you can reach and what access to request,
+creates the workspace at `~/.deploy-workspace`, and clones the chart repos.
 
-It downloads the tool into `~/.deploy-tool`, runs its setup, and leaves you with a `deploy.sh`
-command. Safe to re-run: it updates the tool and re-checks everything.
+Changes nothing in GCP and deploys nothing. Safe to re-run.
 
-This repository is public **only** so the URL above needs no authentication. It holds this bootstrap
-and nothing else: no infrastructure detail, no project identifiers, no credentials. The tool itself
-stays private and is fetched with your own GitHub login.
-
-## Deploying straight from a raw URL
-
-If you would rather not rely on `deploy.sh` being on your PATH, there is a raw URL for that too. It
-installs the tool on first use, then passes your flags straight through:
+## 2. Deploy
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Tarunsatschel/deploy-tool-installer/main/deploy.sh \
   | bash -s -- --org liquidity-alt --repo exchange2.0 --branch beta
 ```
 
-The `-s --` before your flags is what sends them to the tool instead of to bash. Without `--yes` it
-is a dry run and changes nothing. Add `--yes` once the printed plan looks right.
+The `-s --` before your flags is what passes them to the tool instead of to bash. Without `--yes`
+it is a dry run: it prints the plan and changes nothing. Add `--yes` when the plan looks right.
 
-After running the setup once, `deploy.sh --org ... --branch ...` on your PATH does exactly the same
-thing and is shorter to type.
+| What you want | Flags |
+|---|---|
+| Deploy a branch to dev or beta | `--org <org> --repo <repo> --branch <branch> --yes` |
+| Deploy a release to production | `--org <org> --repo <repo> --target <branch> --release-tag <tag> --yes` |
+| A repo that builds several services | add `--service <name>` or `--service all` |
+| Redeploy an existing image, no rebuild | add `--image-tag <tag>` |
+| Build in GCP instead of locally | add `--cloud-build` |
+
+## What lives where
+
+| | Where | Persists? |
+|---|---|---|
+| Chart and pipeline-config clones | `~/.deploy-workspace/cache/devops-files/<org>/` | yes |
+| Application clones | `~/.deploy-workspace/cache/apps/<org>/<repo>/` | yes |
+| Run logs | `~/.deploy-workspace/logs/` | yes |
+| **The tool itself** | a temp directory, for the duration of the command | **no** |
+
+The dependencies stay because they are slow to fetch. The tool does not, so there is no stale copy
+to maintain and every run uses the current version.
+
+## Why this repo is public
+
+Only so the two URLs above need no authentication. It holds these two wrappers and nothing else: no
+infrastructure detail, no project identifiers, no credentials. The tool is private and is fetched
+with your own GitHub login, so there is no shared token anywhere.

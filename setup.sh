@@ -1,58 +1,68 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
-# Bootstrap for the deploy tool.
+# One-command setup.
 #
 #   curl -fsSL https://raw.githubusercontent.com/Tarunsatschel/deploy-tool-installer/main/setup.sh | bash
 #
-# This file is deliberately tiny and contains no infrastructure detail. All it
-# does is make sure the GitHub CLI is usable, fetch the tool itself, and hand
-# over to the real setup inside it.
+# Prepares your machine: checks the tools and logins you need, tells you which
+# clusters you can reach, creates the workspace, and clones the chart repos.
 #
-# Re-run it any time: it updates the tool and re-checks everything.
+# The workspace it builds stays on your machine. The tool that does the work does
+# NOT: it is fetched to a temporary directory for the run and deleted afterwards,
+# so there is no copy of it to go stale or maintain.
+#
+# Changes nothing in GCP and deploys nothing. Safe to re-run any time.
 # ---------------------------------------------------------------------------
 set -uo pipefail
 
+WORKSPACE="${WORKSPACE:-$HOME/.deploy-workspace}"
 REPO_SLUG="${REPO_SLUG:-Tarunsatschel/deploy-tool}"
-INSTALL_DIR="${INSTALL_DIR:-$HOME/.deploy-tool}"
+REPO_REF="${REPO_REF:-main}"
 
-RED=$'\033[1;31m'; GRN=$'\033[1;32m'; BLU=$'\033[1;34m'; DIM=$'\033[2m'; OFF=$'\033[0m'
-die() { printf "\n${RED}%s${OFF}\n\n" "$*" >&2; exit 1; }
+RED=$'[1;31m'; GRN=$'[1;32m'; BLU=$'[1;34m'; DIM=$'[2m'; OFF=$'[0m'
+die() { printf "
+${RED}%s${OFF}
 
-printf "${BLU}==> Fetching the deploy tool${OFF}\n"
+" "$*" >&2; exit 1; }
 
-command -v git >/dev/null 2>&1 || die "git is not installed.
+# Fetch the tool into a temp dir and delete it when this command exits, so no
+# copy of it is left behind. The workspace - the expensive part, meaning the
+# chart clones, application clones and run logs - lives in WORKSPACE and stays.
+fetch_tool() {
+  command -v git >/dev/null 2>&1 || die "git is not installed.
   macOS:  brew install git"
-
-if ! command -v gh >/dev/null 2>&1; then
-  die "The GitHub CLI is not installed. The tool lives in a private repo, so it is required.
+  command -v gh  >/dev/null 2>&1 || die "The GitHub CLI is not installed. It is how this reaches the tool.
   macOS:  brew install gh
   Linux:  https://github.com/cli/cli#installation
 
 Then run:  gh auth login      (choose HTTPS, grant 'repo' and 'read:packages')
-and re-run this command."
-fi
-
-if ! gh auth status >/dev/null 2>&1; then
-  die "You are not logged in to GitHub.
+and run this command again."
+  gh auth status >/dev/null 2>&1 || die "You are not logged in to GitHub.
 
 Run:  gh auth login      (choose HTTPS, grant 'repo' and 'read:packages')
-then re-run this command."
-fi
+then run this command again."
 
-if [ -d "$INSTALL_DIR/.git" ]; then
-  git -C "$INSTALL_DIR" pull --quiet --ff-only 2>/dev/null \
-    && printf "  ${GRN}OK${OFF}    updated %s\n" "$INSTALL_DIR" \
-    || printf "  ${DIM}could not fast-forward %s, using it as it is${OFF}\n" "$INSTALL_DIR"
-else
-  gh repo clone "$REPO_SLUG" "$INSTALL_DIR" -- -q 2>/dev/null \
+  TOOL_TMP="$(mktemp -d "${TMPDIR:-/tmp}/deploy-tool.XXXXXX")" || die "could not create a temp dir"
+  trap "rm -rf '$TOOL_TMP'" EXIT INT TERM
+  printf "${DIM}fetching the tool (temporary, removed when this finishes)...${OFF}
+"
+  gh api "repos/$REPO_SLUG/tarball/$REPO_REF" > "$TOOL_TMP/t.tgz" 2>/dev/null \
     || die "Could not download $REPO_SLUG.
 
 You are logged in, so this is almost certainly missing access.
-Ask Tarun for read access to that repository, then re-run this command."
-  printf "  ${GRN}OK${OFF}    installed into %s\n" "$INSTALL_DIR"
-fi
+Ask Tarun for read access to that repository, then run this command again."
+  tar -xzf "$TOOL_TMP/t.tgz" -C "$TOOL_TMP" --strip-components=1 \
+    || die "the download was corrupt - run the command again"
+  rm -f "$TOOL_TMP/t.tgz"
+  chmod +x "$TOOL_TMP/bin/deploy.sh" "$TOOL_TMP/setup.sh" 2>/dev/null
+  [ -x "$TOOL_TMP/bin/deploy.sh" ] || die "the download is missing bin/deploy.sh"
 
-[ -x "$INSTALL_DIR/setup.sh" ] || die "$INSTALL_DIR/setup.sh is missing or not executable."
+  export CACHE_DIR="$WORKSPACE/cache"
+  export LOG_DIR="$WORKSPACE/logs"
+  mkdir -p "$CACHE_DIR/devops-files" "$CACHE_DIR/apps/liquidity-alt" \
+           "$CACHE_DIR/apps/satschel" "$LOG_DIR"
+}
 
-# Hand over to the real setup inside the tool, which does all the environment checks.
-exec "$INSTALL_DIR/setup.sh"
+fetch_tool
+printf "${BLU}==> workspace: %s${OFF}\n" "$WORKSPACE"
+EPHEMERAL=1 exec "$TOOL_TMP/setup.sh"
